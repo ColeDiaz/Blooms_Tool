@@ -76,8 +76,19 @@ const bloomsTaxonomy = [
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
-const callGeminiAPI = async (prompt, schema = null) => {
-  const apiKey = "";
+const getApiKey = () => {
+  try {
+    // Securely loads the key from Netlify's Environment Variables during build
+    if (typeof import.meta !== 'undefined' && import.meta.env) {
+      return import.meta.env.VITE_GEMINI_API_KEY || "";
+    }
+  } catch (e) {
+    return "";
+  }
+  return "";
+};
+
+const callGeminiAPI = async (prompt, schema = null, apiKey) => {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
 
   const payload = {
@@ -286,6 +297,13 @@ export default function App() {
 
   const handleRewriteObjective = async (moduleId, objectiveId, currentText) => {
     if (!currentText.trim()) return;
+    
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      setAppError("API Key missing! Please add VITE_GEMINI_API_KEY to your Netlify Environment Variables.");
+      return;
+    }
+
     setAppError(null);
     setLoadingStates(prev => ({ ...prev, objectives: { ...prev.objectives, [objectiveId]: true } }));
     
@@ -293,7 +311,7 @@ export default function App() {
       const prompt = `You are an expert instructional designer strictly following Quality Matters (QM) standards. Rewrite the following learning objective to make it specific, measurable, and aligned with Bloom's Taxonomy (QM Standard 2.2). Use a strong action verb. Keep it to a single, concise sentence. Do not include introductory phrases like "Students will be able to". NEVER use words like "understand", "remember", or "learn" as these are levels of learning, not measurable actions. 
       \nCurrent objective: "${currentText}"`;
       
-      const result = await callGeminiAPI(prompt);
+      const result = await callGeminiAPI(prompt, null, apiKey);
       if (result) {
           updateObjective(moduleId, objectiveId, result.replace(/["']/g, '').trim());
       }
@@ -308,6 +326,12 @@ export default function App() {
 
   const handleSuggestActivitiesForObjective = async (moduleId, objectiveId, objectiveText) => {
     if (!objectiveText.trim()) return;
+
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      setAppError("API Key missing! Please add VITE_GEMINI_API_KEY to your Netlify Environment Variables.");
+      return;
+    }
 
     setAppError(null);
     setLoadingStates(prev => ({ ...prev, objectiveActivities: { ...prev.objectiveActivities, [objectiveId]: true } }));
@@ -327,15 +351,14 @@ export default function App() {
           type: "OBJECT",
           properties: {
             type: { type: "STRING", enum: ["activity", "assessment"] },
-            text: { type: "STRING", description: "A concise title or short description of the activity or assessment" },
-            description: { type: "STRING", description: "Detailed instructions, discussion prompts, sample questions, or rubric parameters." },
+            text: { type: "STRING", description: "A concise description of the activity or assessment" },
             isRSI: { type: "BOOLEAN", description: "True if this activity includes Regular and Substantive Interaction (RSI) from the instructor" }
           },
-          required: ["type", "text", "description", "isRSI"]
+          required: ["type", "text", "isRSI"]
         }
       };
 
-      const result = await callGeminiAPI(prompt, schema);
+      const result = await callGeminiAPI(prompt, schema, apiKey);
       
       if (result && Array.isArray(result)) {
           const newActivities = result.map(item => ({
@@ -376,6 +399,12 @@ export default function App() {
         return;
     }
 
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      setAppError("API Key missing! Please add VITE_GEMINI_API_KEY to your Netlify Environment Variables.");
+      return;
+    }
+
     setAppError(null);
     setLoadingStates(prev => ({ ...prev, moduleObjectives: { ...prev.moduleObjectives, [moduleId]: true } }));
     
@@ -398,7 +427,7 @@ export default function App() {
         }
       };
 
-      const result = await callGeminiAPI(prompt, schema);
+      const result = await callGeminiAPI(prompt, schema, apiKey);
       
       if (result && Array.isArray(result)) {
           const newObjectives = result.map(item => ({
@@ -449,6 +478,12 @@ export default function App() {
         return;
     }
 
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      setAppError("API Key missing! Please add VITE_GEMINI_API_KEY to your Netlify Environment Variables.");
+      return;
+    }
+
     setAppError(null);
     setLoadingStates(prev => ({ ...prev, moduleAlignment: { ...prev.moduleAlignment, [moduleId]: true } }));
     
@@ -483,7 +518,7 @@ export default function App() {
         }
       };
 
-      const result = await callGeminiAPI(prompt, schema);
+      const result = await callGeminiAPI(prompt, schema, apiKey);
       
       if (result && Array.isArray(result)) {
           setModules(prevModules => prevModules.map(m => {
@@ -529,6 +564,12 @@ export default function App() {
       return;
     }
 
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      setAppError("API Key missing! Please add VITE_GEMINI_API_KEY to your Netlify Environment Variables.");
+      return;
+    }
+
     // Otherwise, rigorously validate with AI before allowing the manual click
     const loadingKey = `${activityId}-${objectiveId}`;
     setLoadingStates(prev => ({ ...prev, aligningObjective: { ...prev.aligningObjective, [loadingKey]: true } }));
@@ -555,7 +596,7 @@ export default function App() {
         required: ["aligns", "reason"]
       };
 
-      const result = await callGeminiAPI(prompt, schema);
+      const result = await callGeminiAPI(prompt, schema, apiKey);
       
       if (result) {
         if (result.aligns) {
