@@ -135,7 +135,7 @@
             loadingStates: { objectives: {}, objectiveActivities: {}, moduleObjectives: {}, moduleAlignment: {}, aligningObjective: {} },
             appError: null,
             appSuccess: null,
-            expandedBlooms: {},
+            expandedBlooms: {}, // Track which Bloom's category is expanded
             copiedVerb: null
         };
 
@@ -144,7 +144,7 @@
         };
 
         // UI Feedback Helpers
-        const showError = (msg, duration = 4000) => {
+        const showError = (msg, duration = 6000) => {
             updateState({ appError: msg });
             renderNotifications();
             if (duration) setTimeout(() => { updateState({ appError: null }); renderNotifications(); }, duration);
@@ -174,11 +174,14 @@
         };
 
         const callGeminiAPI = async (prompt, schema = null) => {
-            if (!API_KEY) {
-                showError("API Key is missing. Please add your Restricted API key to line 22 of the HTML file.");
+            if (!API_KEY || API_KEY.trim() === "") {
+                showError("API Key is missing. Please add your Google Gemini API key to line 22 of the HTML file.");
                 return null;
             }
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${API_KEY}`;
+            
+            // Note: Changed to 1.5-flash as it is the standard model for public API keys. 
+            // Internal preview models often throw 403/404 errors on standard accounts.
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
 
             const payload = { contents: [{ parts: [{ text: prompt }] }] };
             if (schema) {
@@ -194,13 +197,20 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(payload)
                     });
-                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    if (!response.ok) {
+                        const errData = await response.json().catch(() => ({}));
+                        throw new Error(errData.error?.message || `HTTP error! status: ${response.status}`);
+                    }
                     const data = await response.json();
                     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
                     return schema ? JSON.parse(text) : text;
                 } catch (error) {
+                    console.error("Gemini API Error:", error);
                     retries--;
-                    if (retries === 0) throw error;
+                    if (retries === 0) {
+                        showError(`AI Generation Failed: ${error.message || 'Check your API key restrictions and network.'}`);
+                        return null;
+                    }
                     await new Promise(resolve => setTimeout(resolve, delay));
                     delay *= 2;
                 }
@@ -293,9 +303,9 @@
                     const isDefault = state.modules.length === 1 && state.modules[0].objectives.length === 1 && state.modules[0].objectives[0].text === '' && state.modules[0].activities.length === 1 && state.modules[0].activities[0].text === '';
                     updateState({ modules: isDefault ? newModules : [...state.modules, ...newModules] });
                     showSuccess("CSV Imported Successfully! You can now use 'Auto-Align All' to map your items.");
-                    renderMainContent(); // Re-render everything
+                    renderMainContent(); 
                 }
-                event.target.value = ''; // Reset input
+                event.target.value = ''; 
             };
             reader.readAsText(file);
         };
@@ -889,7 +899,7 @@
                     const prompt = `You are an expert instructional designer strictly following Quality Matters (QM) standards. Rewrite the following learning objective to make it specific, measurable, and aligned with Bloom's Taxonomy (QM Standard 2.2). Use a strong action verb. Keep it to a single, concise sentence. Do not include introductory phrases like "Students will be able to". NEVER use words like "understand", "remember", or "learn" as these are levels of learning, not measurable actions.\nCurrent objective: "${obj.text}"`;
                     const result = await callGeminiAPI(prompt);
                     if (result) obj.text = result.replace(/["']/g, '').trim();
-                } catch(e) { showError("Failed to rewrite objective."); }
+                } catch(e) { /* Error handled in callGeminiAPI */ }
                 finally { state.loadingStates.objectives[objId] = false; updateObjectiveDOM(modId, objId); updateDashboardDOM(modId); }
             }
             else if (t.classList.contains('btn-suggest-acts')) {
@@ -907,7 +917,7 @@
                         m.activities.push(...newActs);
                         renderMainContent(); // Need to render to show new elements
                     }
-                } catch(e) { showError("Failed to suggest activities."); }
+                } catch(e) { /* Error handled in callGeminiAPI */ }
                 finally { state.loadingStates.objectiveActivities[objId] = false; updateObjectiveDOM(modId, objId); }
             }
             else if (t.classList.contains('btn-suggest-obj')) {
@@ -926,7 +936,7 @@
                         m.objectives.push(...newObjs);
                         m.activities.forEach(a => a.objectiveIds.push(...newIds)); // auto align
                     }
-                } catch(e) { showError("Failed to suggest objectives."); }
+                } catch(e) { /* Error handled in callGeminiAPI */ }
                 finally { state.loadingStates.moduleObjectives[modId] = false; renderMainContent(); }
             }
             else if (t.classList.contains('btn-auto-align-mod')) {
@@ -946,7 +956,7 @@
                             if (match) a.objectiveIds = (match.objectiveIds || []).filter(id => objs.some(o => o.id === id));
                         });
                     }
-                } catch(e) { showError("Failed to auto-align module."); }
+                } catch(e) { /* Error handled in callGeminiAPI */ }
                 finally { state.loadingStates.moduleAlignment[modId] = false; renderMainContent(); }
             }
         });
